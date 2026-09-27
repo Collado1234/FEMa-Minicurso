@@ -40,3 +40,26 @@ def load_regression_dataset(name="diabetes", test_size=0.3, random_state=42, sca
         scaler = StandardScaler().fit(X_train)
         X_train, X_test = scaler.transform(X_train), scaler.transform(X_test)
     return X_train, X_test, y_train, y_test
+
+def to_2d(X, method="pca", random_state=42):
+    "Reduz X para duas dimensões"
+    if method == "pca":
+        return PCA(n_components=2, random_state=random_state).fit_transform(X)
+
+    raise ValueError("Método de redução desconhecido")
+
+
+def make_scale_mismatch_demo(n=40, random_state=7):
+    "Dataset sintetico 2d com escalas diferentes"
+    rng = np.random.RandomState(random_state)
+    idade_a = rng.normal(30, 5, n // 2) 
+    idade_b = rng.normal(45, 5, n // 2) 
+    renda_a = rng.normal(3000, 800, n // 2)
+    renda_b = rng.normal(9000, 1500, n // 2)
+    X = np.column_stack([
+        np.concatenate([idade_a, idade_b]),
+        np.concatenate([renda_a, renda_b]),
+    ])
+    y = np.array([0] * (n // 2) + [1] * (n // 2))
+    perm = rng.permutation(n)
+    return X[perm], y[perm]
