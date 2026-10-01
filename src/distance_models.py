@@ -1,29 +1,56 @@
+"""
+distance_models.py
+-------------------
+Implementações "do zero" de classificadores/regressores baseados em distância.
+
+Arquitetura pensada para o FEMa entrar depois com o mínimo de atrito:
+- Toda classe herda de BaseEstimator (+ ClassifierMixin/RegressorMixin) do scikit-learn.
+- Isso significa que GridSearchCV, RandomizedSearchCV, cross_val_score, e as funções
+  de plot de fronteira de decisão em viz.py funcionam automaticamente com QUALQUER
+  classe daqui, sem precisar adaptar nada.
+- Quando formos implementar o FEMa, basta criar `FEMaClassifier(BaseEstimator, ClassifierMixin)`
+  com a mesma assinatura de fit/predict — todos os notebooks (tuning, métricas, comparação)
+  vão funcionar sem alteração, só trocando o modelo usado.
+
+As funções "puras" (knn_majority_predict_one, knn_weighted_predict_one) ficam expostas
+separadamente porque são as que aparecem no slide "Implementar o KNN do zero" — são
+mais fáceis de ler/explicar ao vivo do que a versão vetorizada usada dentro das classes.
+"""
+
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from scipy import stats
 
 
-def euclidean_distance(a,b):
+# ---------------------------------------------------------------------------
+# 1) Funções "puras", ponto a ponto — para mostrar/explicar ao vivo no minicurso
+# ---------------------------------------------------------------------------
+
+def euclidean_distance(a, b):
+    """Distância euclidiana entre dois vetores 1D."""
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
-
-    return np.sqrt(np.sum((a - b)**2))
+    return np.sqrt(np.sum((a - b) ** 2))
 
 
 def knn_majority_predict_one(X_train, y_train, x_query, k):
-    """KNN classico (voto majoritario por consulta), todos k vizinhos possuem peso igual """
+    """KNN clássico (votação majoritária) para um único ponto de consulta.
 
+    Todos os k vizinhos mais próximos pesam igual no voto.
+    """
     distancias = np.array([euclidean_distance(x_query, xi) for xi in X_train])
-
     indices_k = np.argsort(distancias)[:k]
     rotulos_vizinhos = y_train[indices_k]
-
     valores, contagens = np.unique(rotulos_vizinhos, return_counts=True)
     return valores[np.argmax(contagens)]
 
 
 def knn_weighted_predict_one(X_train, y_train, x_query, k, p=1, eps=1e-8):
-    """ Knn Ponderado pela distância para um único ponto de consulta"""
+    """KNN ponderado pela distância para um único ponto de consulta.
+
+    Cada vizinho vota com peso 1/distancia**p — vizinhos mais próximos
+    pesam mais que vizinhos mais distantes.
+    """
     distancias = np.array([euclidean_distance(x_query, xi) for xi in X_train])
     indices_k = np.argsort(distancias)[:k]
     pesos = 1.0 / (distancias[indices_k] ** p + eps)
@@ -33,6 +60,11 @@ def knn_weighted_predict_one(X_train, y_train, x_query, k, p=1, eps=1e-8):
         classe = y_train[idx]
         votos[classe] = votos.get(classe, 0.0) + peso
     return max(votos, key=votos.get)
+
+
+# ---------------------------------------------------------------------------
+# 2) Versões vetorizadas + wrappers estilo scikit-learn (usadas no resto do curso)
+# ---------------------------------------------------------------------------
 
 def _pairwise_distances(X, Y, metric="euclidean"):
     """Matriz de distâncias (n_X, n_Y) entre duas matrizes de pontos."""
@@ -151,3 +183,34 @@ class KNNRegressor(BaseDistanceModel, RegressorMixin):
                 pesos = 1.0 / (row_dist ** self.p + self.eps)
                 preds.append(np.average(vizinhos_y, weights=pesos))
         return np.array(preds)
+
+
+# ---------------------------------------------------------------------------
+# 3) Onde o FEMa vai entrar (deixe este bloco como referência / esqueleto)
+# ---------------------------------------------------------------------------
+#
+# class FEMaClassifier(BaseDistanceModel, ClassifierMixin):
+#     """Esqueleto para o FEMa — mesma interface do KNNClassifier acima.
+#
+#     A diferença central: em vez de pesos 1/distancia**p, o FEMa usa uma
+#     função de base (Shepard, Wendland C2, Laplaciana, Inverse Multiquadratic,
+#     Radial...) para ponderar a influência de cada ponto de treino.
+#     """
+#
+#     def __init__(self, basis="shepard", **basis_kwargs):
+#         super().__init__(k=None, metric="euclidean")  # FEMa tipicamente usa todos os pontos
+#         self.basis = basis
+#         self.basis_kwargs = basis_kwargs
+#
+#     def _weights(self, dist):
+#         # aqui entra a função de base escolhida (Shepard, Wendland C2, etc.)
+#         raise NotImplementedError
+#
+#     def predict(self, X):
+#         raise NotImplementedError
+#
+# Assim que essa classe existir, ela já pode ser usada em:
+#   - 03_tuning_grid_random.ipynb   (GridSearchCV/RandomizedSearchCV)
+#   - 04_metricas.ipynb             (accuracy, F1, MAE, RMSE, etc.)
+#   - 05_comparacao_modelos_lineares.ipynb (comparação com modelos lineares)
+# sem precisar mudar mais nada além de adicionar "FEMa": FEMaClassifier() nos dicts de modelos.
